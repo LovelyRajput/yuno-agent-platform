@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">Live Monitor</h1>
+  <div class="text-sm">
+    <span id="status" class="px-2 py-1 rounded bg-amber-100 text-amber-800">connecting...</span>
+    <button id="clear" class="ml-2 px-2 py-1 border rounded">Clear</button>
+  </div>
+</div>
+
+<p class="text-sm text-slate-600 mb-4">
+  Real-time stream of agent activity: every message, tool call, tool result, run start/end, and Telegram I/O.
+  Open this in one tab and run a workflow (or message the Telegram bot) in another to watch agents collaborate live.
+</p>
+
+<div id="events" class="bg-slate-900 text-slate-100 rounded p-4 font-mono text-xs space-y-1 max-h-[70vh] overflow-auto"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const eventsDiv = document.getElementById('events');
+const statusEl = document.getElementById('status');
+document.getElementById('clear').onclick = () => eventsDiv.innerHTML = '';
+
+function colorFor(type){
+  if (type.startsWith('run_')) return 'text-amber-300';
+  if (type.startsWith('agent_')) return 'text-emerald-300';
+  if (type.startsWith('node_')) return 'text-blue-300';
+  if (type === 'message') return 'text-slate-200';
+  if (type.startsWith('telegram_')) return 'text-purple-300';
+  if (type === 'ping') return 'text-slate-600';
+  return 'text-slate-100';
+}
+function add(ev){
+  const line = document.createElement('div');
+  line.className = colorFor(ev.type);
+  const ts = (ev.ts||'').slice(11,19);
+  const meta = {...ev}; delete meta.ts; delete meta.type;
+  line.textContent = `[${ts}] ${ev.type.padEnd(14)}  ${JSON.stringify(meta)}`;
+  eventsDiv.appendChild(line);
+  eventsDiv.scrollTop = eventsDiv.scrollHeight;
+}
+function connect(){
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/monitor`);
+  ws.onopen = () => { statusEl.textContent = 'connected'; statusEl.className = 'px-2 py-1 rounded bg-emerald-100 text-emerald-800'; };
+  ws.onclose = () => {
+    statusEl.textContent = 'disconnected — retrying';
+    statusEl.className = 'px-2 py-1 rounded bg-red-100 text-red-800';
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = (e) => { try { add(JSON.parse(e.data)); } catch {} };
+}
+connect();
+</script>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Workflows</h1>
+  <a href="/workflows/new" class="bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-800">+ New Workflow</a>
+</div>
+
+<div id="wf-list" class="grid gap-3"></div>
+
+<!-- Run modal -->
+<div id="run-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+  <div class="bg-white p-6 rounded-lg w-full max-w-2xl">
+    <h3 class="text-lg font-bold mb-3">Run workflow: <span id="run-wf-name"></span></h3>
+    <textarea id="run-input" rows="3" placeholder="Initial input for the workflow..." class="w-full border rounded p-2"></textarea>
+    <div class="mt-3 flex justify-end gap-2">
+      <button onclick="document.getElementById('run-modal').classList.add('hidden')" class="px-4 py-2 rounded border">Cancel</button>
+      <button id="run-submit" class="px-4 py-2 rounded bg-slate-900 text-white">Run</button>
+    </div>
+    <div id="run-output" class="mt-4 hidden bg-slate-50 p-3 rounded text-sm whitespace-pre-wrap"></div>
+    <div id="run-link" class="mt-2 hidden text-sm"></div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+let runWfId = null;
+async function loadWorkflows() {
+  const wfs = await api.get('/api/workflows');
+  const list = document.getElementById('wf-list');
+  list.innerHTML = '';
+  if (wfs.length === 0) {
+    list.innerHTML = '<div class="text-slate-500">No workflows yet. Click "+ New Workflow" or run setup to seed templates.</div>';
+    return;
+  }
+  wfs.forEach(w => {
+    const div = document.createElement('div');
+    div.className = 'bg-white p-4 rounded-lg shadow flex items-start justify-between';
+    const nodeCount = Object.keys((w.graph && w.graph.nodes) || {}).length;
+    div.innerHTML = `
+      <div class="flex-1">
+        <div class="flex items-center gap-2">
+          <h3 class="font-semibold text-lg">${escapeHtml(w.name)}</h3>
+          ${w.is_template ? '<span class="text-xs bg-violet-100 text-violet-800 px-2 py-0.5 rounded">template</span>' : ''}
+        </div>
+        <p class="text-sm text-slate-600 mt-1">${escapeHtml(w.description || '')}</p>
+        <div class="text-xs text-slate-500 mt-2">${nodeCount} step(s)</div>
+      </div>
+      <div class="flex gap-2 ml-4 shrink-0">
+        <button data-run class="text-blue-600 hover:underline">Run</button>
+        <a href="/workflows/${w.id}/edit" class="text-slate-600 hover:underline">Edit</a>
+        <button data-delete class="text-red-600 hover:underline">Delete</button>
+      </div>`;
+    div.querySelector('[data-run]').onclick = () => openRun(w);
+    div.querySelector('[data-delete]').onclick = async () => {
+      if (!confirm(`Delete workflow "${w.name}"?`)) return;
+      await api.del(`/api/workflows/${w.id}`);
+      loadWorkflows();
+    };
+    list.appendChild(div);
+  });
+}
+function escapeHtml(s){ return (s||'').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function openRun(w){
+  runWfId = w.id;
+  document.getElementById('run-wf-name').textContent = w.name;
+  document.getElementById('run-input').value = '';
+  document.getElementById('run-output').classList.add('hidden');
+  document.getElementById('run-link').classList.add('hidden');
+  document.getElementById('run-modal').classList.remove('hidden');
+}
+document.getElementById('run-submit').onclick = async () => {
+  const input = document.getElementById('run-input').value.trim();
+  if (!input) return;
+  const out = document.getElementById('run-output');
+  const link = document.getElementById('run-link');
+  out.classList.remove('hidden');
+  out.textContent = 'Running... (multi-agent workflows take longer)';
+  link.classList.add('hidden');
+  try {
+    const run = await api.post(`/api/workflows/${runWfId}/run`, { input, trigger: 'manual' });
+    out.textContent = run.output || '(no output)';
+    link.innerHTML = `<a class="text-blue-600 underline" href="/runs/${run.id}">View full conversation →</a> · ${run.total_tokens} tokens · $${run.total_cost_usd.toFixed(4)}`;
+    link.classList.remove('hidden');
+  } catch (e) {
+    out.textContent = 'Error: ' + e.message;
+  }
+};
+loadWorkflows();
+</script>
+{% endblock %}

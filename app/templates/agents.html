@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Agents</h1>
+  <a href="/agents/new" class="bg-slate-900 text-white px-4 py-2 rounded hover:bg-slate-800">+ New Agent</a>
+</div>
+
+<div id="agent-list" class="grid gap-3"></div>
+
+<template id="agent-card-tpl">
+  <div class="bg-white p-4 rounded-lg shadow flex items-start justify-between">
+    <div class="flex-1">
+      <div class="flex items-center gap-2">
+        <h3 class="font-semibold text-lg" data-name></h3>
+        <span class="text-xs bg-slate-100 px-2 py-0.5 rounded" data-role></span>
+        <span class="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded hidden" data-tg-badge>telegram</span>
+      </div>
+      <p class="text-sm text-slate-600 mt-1" data-prompt></p>
+      <div class="text-xs text-slate-500 mt-2">
+        Model: <span data-model></span> · Tools: <span data-tools></span>
+      </div>
+    </div>
+    <div class="flex gap-2 ml-4 shrink-0">
+      <button data-run class="text-blue-600 hover:underline">Run</button>
+      <a data-edit class="text-slate-600 hover:underline">Edit</a>
+      <button data-delete class="text-red-600 hover:underline">Delete</button>
+    </div>
+  </div>
+</template>
+
+<!-- Run modal -->
+<div id="run-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+  <div class="bg-white p-6 rounded-lg w-full max-w-2xl">
+    <h3 class="text-lg font-bold mb-3">Run agent: <span id="run-agent-name"></span></h3>
+    <textarea id="run-input" rows="3" placeholder="Type a message for the agent..." class="w-full border rounded p-2"></textarea>
+    <div class="mt-3 flex justify-end gap-2">
+      <button onclick="document.getElementById('run-modal').classList.add('hidden')" class="px-4 py-2 rounded border">Cancel</button>
+      <button id="run-submit" class="px-4 py-2 rounded bg-slate-900 text-white">Run</button>
+    </div>
+    <div id="run-output" class="mt-4 hidden bg-slate-50 p-3 rounded text-sm whitespace-pre-wrap"></div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+let runAgentId = null;
+async function loadAgents() {
+  const agents = await api.get('/api/agents');
+  const list = document.getElementById('agent-list');
+  list.innerHTML = '';
+  if (agents.length === 0) {
+    list.innerHTML = '<div class="text-slate-500">No agents yet. Click "+ New Agent" to create one.</div>';
+    return;
+  }
+  const tpl = document.getElementById('agent-card-tpl');
+  agents.forEach(a => {
+    const node = tpl.content.cloneNode(true);
+    node.querySelector('[data-name]').textContent = a.name;
+    node.querySelector('[data-role]').textContent = a.role;
+    node.querySelector('[data-prompt]').textContent = (a.system_prompt || '').slice(0, 160);
+    node.querySelector('[data-model]').textContent = a.model;
+    node.querySelector('[data-tools]').textContent = (a.tools || []).join(', ') || 'none';
+    if ((a.channels || []).includes('telegram')) node.querySelector('[data-tg-badge]').classList.remove('hidden');
+    node.querySelector('[data-edit]').href = `/agents/${a.id}/edit`;
+    node.querySelector('[data-run]').onclick = () => openRunModal(a);
+    node.querySelector('[data-delete]').onclick = async () => {
+      if (!confirm(`Delete agent "${a.name}"?`)) return;
+      await api.del(`/api/agents/${a.id}`);
+      loadAgents();
+    };
+    list.appendChild(node);
+  });
+}
+function openRunModal(agent) {
+  runAgentId = agent.id;
+  document.getElementById('run-agent-name').textContent = agent.name;
+  document.getElementById('run-input').value = '';
+  document.getElementById('run-output').classList.add('hidden');
+  document.getElementById('run-modal').classList.remove('hidden');
+}
+document.getElementById('run-submit').onclick = async () => {
+  const input = document.getElementById('run-input').value.trim();
+  if (!input) return;
+  const out = document.getElementById('run-output');
+  out.classList.remove('hidden');
+  out.textContent = 'Running... (this may take a few seconds)';
+  try {
+    const run = await api.post(`/api/agents/${runAgentId}/run`, { input, trigger: 'manual' });
+    out.textContent = run.output || '(no output)';
+  } catch (e) {
+    out.textContent = 'Error: ' + e.message;
+  }
+};
+loadAgents();
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+  <header>
+    <h1 class="text-3xl font-bold">Welcome to Yuno AI</h1>
+    <p class="text-slate-600 mt-1">Build, configure, and orchestrate AI agents that collaborate to complete real tasks.</p>
+  </header>
+
+  {% if not anthropic_ok or not telegram_ok %}
+  <div class="bg-amber-50 border border-amber-300 rounded p-4">
+    <h3 class="font-semibold text-amber-900">Configuration needed</h3>
+    <ul class="text-sm text-amber-900 mt-2 list-disc list-inside">
+      {% if not anthropic_ok %}<li>Set <code>ANTHROPIC_API_KEY</code> in <code>.env</code> and restart.</li>{% endif %}
+      {% if not telegram_ok %}<li>Set <code>TELEGRAM_BOT_TOKEN</code> in <code>.env</code> (see README for /start with @BotFather).</li>{% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <a href="/agents" class="block bg-white p-6 rounded-lg shadow hover:shadow-md transition">
+      <div class="text-4xl font-bold text-slate-800">{{ agent_count }}</div>
+      <div class="text-slate-600 mt-1">Agents configured</div>
+    </a>
+    <a href="/workflows" class="block bg-white p-6 rounded-lg shadow hover:shadow-md transition">
+      <div class="text-4xl font-bold text-slate-800">{{ workflow_count }}</div>
+      <div class="text-slate-600 mt-1">Workflows defined</div>
+    </a>
+    <a href="/runs" class="block bg-white p-6 rounded-lg shadow hover:shadow-md transition">
+      <div class="text-4xl font-bold text-slate-800">{{ run_count }}</div>
+      <div class="text-slate-600 mt-1">Runs executed</div>
+    </a>
+  </div>
+
+  <section class="bg-white p-6 rounded-lg shadow">
+    <h2 class="text-xl font-semibold mb-3">Quick start</h2>
+    <ol class="list-decimal list-inside space-y-2 text-slate-700">
+      <li>Go to <a class="text-blue-600 underline" href="/agents">Agents</a> and verify the seeded agents (Researcher, Summarizer, Concierge).</li>
+      <li>Open <a class="text-blue-600 underline" href="/workflows">Workflows</a> and run the "Research and Summarize" template.</li>
+      <li>Message your Telegram bot. Watch the conversation flow in <a class="text-blue-600 underline" href="/monitor">Live Monitor</a>.</li>
+      <li>Browse the conversation history under <a class="text-blue-600 underline" href="/runs">Runs</a>.</li>
+    </ol>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Run History</h1>
+  <button id="refresh" class="text-sm px-3 py-1 border rounded">↻ Refresh</button>
+</div>
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-100 text-slate-700">
+      <tr>
+        <th class="text-left px-4 py-2">#</th>
+        <th class="text-left px-4 py-2">Trigger</th>
+        <th class="text-left px-4 py-2">Target</th>
+        <th class="text-left px-4 py-2">Status</th>
+        <th class="text-left px-4 py-2">Input</th>
+        <th class="text-right px-4 py-2">Tokens</th>
+        <th class="text-right px-4 py-2">Cost</th>
+        <th class="text-left px-4 py-2">When</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function load() {
+  const runs = await api.get('/api/runs?limit=100');
+  const tbody = document.getElementById('rows');
+  tbody.innerHTML = '';
+  if (runs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-slate-500">No runs yet.</td></tr>';
+    return;
+  }
+  runs.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-t hover:bg-slate-50 cursor-pointer';
+    tr.onclick = () => window.location.href = `/runs/${r.id}`;
+    const statusColor = r.status === 'completed' ? 'bg-emerald-100 text-emerald-800'
+                      : r.status === 'failed' ? 'bg-red-100 text-red-800'
+                      : 'bg-amber-100 text-amber-800';
+    const target = r.workflow_id ? `WF #${r.workflow_id}` : r.agent_id ? `Agent #${r.agent_id}` : '-';
+    tr.innerHTML = `
+      <td class="px-4 py-2">${r.id}</td>
+      <td class="px-4 py-2">${r.trigger}</td>
+      <td class="px-4 py-2">${target}</td>
+      <td class="px-4 py-2"><span class="text-xs px-2 py-0.5 rounded ${statusColor}">${r.status}</span></td>
+      <td class="px-4 py-2 truncate max-w-xs">${escapeHtml((r.input||'').slice(0, 80))}</td>
+      <td class="px-4 py-2 text-right">${r.total_tokens}</td>
+      <td class="px-4 py-2 text-right">$${(r.total_cost_usd||0).toFixed(4)}</td>
+      <td class="px-4 py-2 text-slate-500">${new Date(r.started_at).toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+function escapeHtml(s){ return (s||'').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+document.getElementById('refresh').onclick = load;
+load();
+</script>
+{% endblock %}

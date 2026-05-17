@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">{% if workflow_id %}Edit Workflow{% else %}New Workflow{% endif %}</h1>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Form -->
+  <form id="wf-form" class="bg-white p-6 rounded-lg shadow space-y-4">
+    <label class="block">
+      <span class="text-sm font-medium">Name</span>
+      <input name="name" required class="mt-1 w-full border rounded p-2" />
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium">Description</span>
+      <textarea name="description" rows="2" class="mt-1 w-full border rounded p-2"></textarea>
+    </label>
+    <label class="inline-flex items-center gap-2 text-sm">
+      <input type="checkbox" name="is_template" /> Mark as template
+    </label>
+
+    <hr/>
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold">Workflow Steps</h3>
+        <button type="button" id="add-step" class="text-sm bg-slate-100 px-3 py-1 rounded">+ Add Step</button>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">
+        Output of each step is piped into the next step as <code>{{'{{input}}'}}</code>.
+        Mark one step as "start". Use "next step" to chain. Add branching by entering
+        an "if-contains" condition.
+      </p>
+      <div id="steps"></div>
+    </div>
+
+    <div class="flex gap-2 justify-end">
+      <a href="/workflows" class="px-4 py-2 border rounded">Cancel</a>
+      <button type="submit" class="px-4 py-2 bg-slate-900 text-white rounded">Save</button>
+    </div>
+    <div id="form-error" class="hidden text-red-600 text-sm"></div>
+  </form>
+
+  <!-- Live preview of the graph -->
+  <div class="bg-white p-6 rounded-lg shadow">
+    <h3 class="font-semibold mb-3">Graph preview</h3>
+    <pre id="graph-preview" class="text-xs bg-slate-50 p-3 rounded overflow-auto max-h-[500px]"></pre>
+    <p class="text-xs text-slate-500 mt-2">This is the JSON the orchestrator will execute. Updates as you edit.</p>
+  </div>
+</div>
+
+<template id="step-tpl">
+  <div class="border rounded p-3 mb-2 bg-slate-50">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+      <label class="text-xs">Step ID
+        <input data-id class="mt-1 w-full border rounded p-1 text-sm" placeholder="e.g. research" />
+      </label>
+      <label class="text-xs">Agent
+        <select data-agent class="mt-1 w-full border rounded p-1 text-sm"></select>
+      </label>
+    </div>
+    <label class="text-xs block">Prompt template (use {{input}} for upstream output)
+      <textarea data-prompt rows="2" class="mt-1 w-full border rounded p-1 text-sm font-mono"></textarea>
+    </label>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+      <label class="text-xs">Next step ID (optional)
+        <input data-next class="mt-1 w-full border rounded p-1 text-sm" placeholder="e.g. summarize" />
+      </label>
+      <label class="text-xs">If output contains... go to (optional branching)
+        <div class="flex gap-1 mt-1">
+          <input data-branch-if class="border rounded p-1 text-sm flex-1" placeholder="approved" />
+          <input data-branch-to class="border rounded p-1 text-sm flex-1" placeholder="next_step_id" />
+        </div>
+      </label>
+    </div>
+    <div class="flex items-center justify-between mt-2 text-xs">
+      <label class="inline-flex items-center gap-1">
+        <input type="radio" name="start_step" data-start /> Start node
+      </label>
+      <button type="button" data-remove class="text-red-600">Remove</button>
+    </div>
+  </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const wfId = {{ workflow_id|tojson }};
+const form = document.getElementById('wf-form');
+const stepsDiv = document.getElementById('steps');
+let agentsCache = [];
+
+async function init() {
+  agentsCache = await api.get('/api/agents');
+  if (wfId) {
+    const w = await api.get(`/api/workflows/${wfId}`);
+    form.name.value = w.name;
+    form.description.value = w.description;
+    form.is_template.checked = w.is_template;
+    const g = w.graph || { nodes: {} };
+    Object.entries(g.nodes || {}).forEach(([id, n]) => {
+      addStep(id, n, id === g.start);
+    });
+  } else {
+    addStep('step1', { agent_id: agentsCache[0]?.id, prompt_template: '{{input}}' }, true);
+  }
+  updatePreview();
+}
+
+function addStep(id, node, isStart) {
+  const tpl = document.getElementById('step-tpl');
+  const el = tpl.content.cloneNode(true).firstElementChild;
+  el.querySelector('[data-id]').value = id || '';
+  el.querySelector('[data-prompt]').value = node?.prompt_template || '{{input}}';
+  el.querySelector('[data-next]').value = node?.next || '';
+  el.querySelector('[data-start]').checked = !!isStart;
+  const branch = (node?.branches || [])[0];
+  el.querySelector('[data-branch-if]').value = branch?.if_contains || '';
+  el.querySelector('[data-branch-to]').value = branch?.to || '';
+
+  const sel = el.querySelector('[data-agent]');
+  agentsCache.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id; opt.textContent = `${a.name} (#${a.id})`;
+    if (a.id === node?.agent_id) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  el.querySelector('[data-remove]').onclick = () => { el.remove(); updatePreview(); };
+  el.querySelectorAll('input, textarea, select').forEach(inp => inp.addEventListener('input', updatePreview));
+  stepsDiv.appendChild(el);
+}
+
+document.getElementById('add-step').onclick = () => {
+  addStep(`step${stepsDiv.children.length + 1}`, { agent_id: agentsCache[0]?.id, prompt_template: '{{input}}' }, false);
+  updatePreview();
+};
+
+function buildGraph() {
+  const nodes = {};
+  let start = null;
+  stepsDiv.querySelectorAll(':scope > div').forEach(el => {
+    const id = el.querySelector('[data-id]').value.trim();
+    if (!id) return;
+    const node = {
+      agent_id: parseInt(el.querySelector('[data-agent]').value),
+      prompt_template: el.querySelector('[data-prompt]').value,
+      next: el.querySelector('[data-next]').value.trim() || null,
+    };
+    const bIf = el.querySelector('[data-branch-if]').value.trim();
+    const bTo = el.querySelector('[data-branch-to]').value.trim();
+    if (bIf && bTo) node.branches = [{ if_contains: bIf, to: bTo }];
+    nodes[id] = node;
+    if (el.querySelector('[data-start]').checked) start = id;
+  });
+  return { start: start || Object.keys(nodes)[0], nodes };
+}
+
+function updatePreview() {
+  document.getElementById('graph-preview').textContent = JSON.stringify(buildGraph(), null, 2);
+}
+
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const payload = {
+    name: form.name.value,
+    description: form.description.value,
+    is_template: form.is_template.checked,
+    graph: buildGraph(),
+  };
+  try {
+    if (wfId) await api.patch(`/api/workflows/${wfId}`, payload);
+    else await api.post('/api/workflows', payload);
+    window.location.href = '/workflows';
+  } catch (e) {
+    const err = document.getElementById('form-error');
+    err.textContent = 'Error: ' + e.message;
+    err.classList.remove('hidden');
+  }
+};
+init();
+</script>
+{% endblock %}

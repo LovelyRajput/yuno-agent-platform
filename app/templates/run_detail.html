@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="/runs" class="text-sm text-blue-600 hover:underline">← back to runs</a>
+<h1 class="text-2xl font-bold mt-2 mb-4">Run #{{ run_id }}</h1>
+
+<div id="meta" class="bg-white p-4 rounded shadow mb-4 text-sm"></div>
+<div id="messages" class="space-y-2"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const runId = {{ run_id|tojson }};
+function escapeHtml(s){ return (s||'').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function colorFor(sender){
+  return {
+    user: 'bg-blue-50 border-blue-200',
+    agent: 'bg-white border-slate-200',
+    'inter-agent': 'bg-violet-50 border-violet-200',
+    tool_call: 'bg-amber-50 border-amber-200',
+    tool_result: 'bg-emerald-50 border-emerald-200',
+    system: 'bg-red-50 border-red-200',
+  }[sender] || 'bg-white';
+}
+async function load(){
+  const run = await api.get(`/api/runs/${runId}`);
+  document.getElementById('meta').innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div><strong>Status:</strong> ${run.status}</div>
+      <div><strong>Trigger:</strong> ${run.trigger}</div>
+      <div><strong>Tokens:</strong> ${run.total_tokens}</div>
+      <div><strong>Cost:</strong> $${(run.total_cost_usd||0).toFixed(4)}</div>
+      <div class="col-span-2 md:col-span-4"><strong>Input:</strong> ${escapeHtml(run.input)}</div>
+    </div>`;
+  const div = document.getElementById('messages');
+  div.innerHTML = '';
+  run.messages.forEach(m => {
+    const el = document.createElement('div');
+    el.className = `border rounded p-3 ${colorFor(m.sender)}`;
+    el.innerHTML = `
+      <div class="text-xs text-slate-500 mb-1">
+        <strong>${escapeHtml(m.sender_name || m.sender)}</strong> · ${m.sender}
+        ${m.tokens_in||m.tokens_out ? ` · in ${m.tokens_in} / out ${m.tokens_out}` : ''}
+        · ${new Date(m.created_at).toLocaleTimeString()}
+      </div>
+      <div class="whitespace-pre-wrap text-sm">${escapeHtml(m.content)}</div>`;
+    div.appendChild(el);
+  });
+}
+load();
+</script>
+{% endblock %}
