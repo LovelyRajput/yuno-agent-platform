@@ -10,10 +10,10 @@ The platform uses **Groq** as the LLM provider (Llama 3.3 70B + Llama 3.1 8B Ins
 
 ## Demo
 
-A short screen recording (`demo.mp4` / Loom link) is included showing:
+A short screen recording (`https://www.loom.com/share/e8e00c37641b4dbdb522c0a944fd3032` / Loom link) is included showing:
 
 1. Browsing seeded agents and templates in the web UI
-2. Running the **Research and Summarize** workflow end-to-end (two agents collaborating)
+2. Running the **Customer Support Triage** workflow end-to-end (two agents collaborating)
 3. Messaging the Telegram bot live and watching the conversation appear in the Live Monitor
 
 ---
